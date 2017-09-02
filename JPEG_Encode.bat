@@ -1,5 +1,5 @@
 @echo off
-REM JPEG encode batch for cjpeg - version 1.4
+REM JPEG encode batch for cjpeg - version 1.41
 REM   これはcjpegによるJPEGエンコードを簡単に扱えるようにするためのパッチです。 
 REM   複数のフォルダ入力とファイル入力に対応しています。
 REM   mozjpeg版cjpegを使用した場合は、JPEGファイルの再エンコードも可能です。
@@ -31,13 +31,19 @@ set TEST_SW=0
 REM テストモード有効時の追加文字列（引用符無）
 set TEST_NAME=mozjpeg
 
-REM --- BATCH SETTING -------------------------------------
+REM --- INTERNAL SETTING ----------------------------------
 set OUT_EXT=.jpg
+set IN_EXT=.bmp .jpg .jpeg
+set OUTWORK_MODE=1
+set MIN_OUTSIZE=10
+
 set FLAG=FALSE
 set IFILE=0
 set OPFILE=0
 set OLFILE=0
 set QA_MODE=0
+
+set IN_DIR=%IN_EXT:.=*.%
 
 if %TEST_SW% == 1 (
   set TEST_NAME=" [%TEST_NAME% %BIN_OPTION%]"
@@ -66,12 +72,13 @@ if not exist %BIN_DIST% goto EX_CHECK_ERROR
 
 echo. 
 mkdir %OUT_DIR% 2> nul
+if not exist %OUT_DIR% (
+ goto OD_CHECK_ERROR
+)
+
 for %%B in (%OUT_DIR%) do (
   echo OUTPUT-DIR "%%~fB"
   set OUT_DIR="%%~fB\"
-)
-if not exist %OUT_DIR% (
- goto OD_CHECK_ERROR
 )
 
 goto MAINSTART
@@ -98,7 +105,7 @@ if not exist "%~1" goto AFTERWORKING
 if exist "%~1\" (
   call :GETCNUM "%~dp1"
   set NUM_OPLACE2= !GETCNUM_RET!
-  for /r "%~1" %%A in (*.bmp *.jpg) do (
+  for /r "%~1" %%A in (%IN_DIR%) do (
     echo In^|"%%~fA"
     set /a IFILE+=1
     call :RUNCUT "%%~dpnA" !NUM_OPLACE2!
@@ -114,7 +121,6 @@ if exist "%~1\" (
         call :CONNECT_PATH !WORKCONNECT! "%OUT_EXT%"
         call :DECIDENAME !WORKCONNECT!
         %BIN_DIST% %BIN_OPTION% -quality %%B -outfile !DN_FILENAME! "%%~fA"
-        call :CHECKFILE !DN_FILENAME!
         call :OUTWORK !ERRORLEVEL!
       )
     ) else (
@@ -123,7 +129,6 @@ if exist "%~1\" (
       call :CONNECT_PATH !WORKCONNECT! "%OUT_EXT%"
       call :DECIDENAME !WORKCONNECT!
       %BIN_DIST% %BIN_OPTION% -outfile !DN_FILENAME! "%%~fA"
-      call :CHECKFILE !DN_FILENAME!
       call :OUTWORK !ERRORLEVEL!
     )
   )
@@ -131,8 +136,9 @@ if exist "%~1\" (
 )
 
 set FLAG=FALSE
-if /i "%~x1" == ".BMP" set FLAG=TRUE
-if /i "%~x1" == ".JPG" set FLAG=TRUE
+for %%A in (%IN_EXT%) do (
+  if /i "%~x1" == "%%A" set FLAG=TRUE
+)
 if %FLAG%==FALSE goto NEXT
 
 echo In^|"%~f1"
@@ -145,7 +151,6 @@ if %QA_MODE% == 1 (
     call :CONNECT_PATH !WORKCONNECT! "%OUT_EXT%"
     call :DECIDENAME !WORKCONNECT!
     %BIN_DIST% %BIN_OPTION% -quality %%B -outfile !DN_FILENAME! "%~f1"
-    call :CHECKFILE !DN_FILENAME!
     call :OUTWORK !ERRORLEVEL!
   )
 ) else (
@@ -155,7 +160,6 @@ if %QA_MODE% == 1 (
   call :CONNECT_PATH !WORKCONNECT! "%OUT_EXT%"
   call :DECIDENAME !WORKCONNECT!
   %BIN_DIST% %BIN_OPTION% -outfile !DN_FILENAME! "%~f1"
-  call :CHECKFILE !DN_FILENAME!
   call :OUTWORK !ERRORLEVEL!
 )
 
@@ -164,12 +168,26 @@ SHIFT
 GOTO MAINSTART
 
 :OUTWORK
-if %1 GEQ 0 (
+if %OUTWORK_MODE% == 1 (
+  if %1 == 0 set OUTWORK_FLAG=SUCCESS
+  if %1 == 1 set OUTWORK_FLAG=FAILURE
+  if %1 == 2 set OUTWORK_FLAG=WARNING
+) else (
+  call :CHECKFILE !DN_FILENAME!
+  if !ERRORLEVEL! GEQ %MIN_OUTSIZE% (
+    set OUTWORK_FLAG=SUCCESS
+  ) else (
+    set OUTWORK_FLAG=FAILURE
+  )
+)
+if %OUTWORK_FLAG% == SUCCESS (
   set /a OLFILE+=1
   echo   ^|Out %DN_FILENAME%
-) else (
+) else if %OUTWORK_FLAG% == WARNING (
+  echo   ^|War %DN_FILENAME%
+) else if %OUTWORK_FLAG% == FAILURE (
   echo   ^|Err %DN_FILENAME%
-)
+) else echo   ^|?   %DN_FILENAME%
 exit /b
 
 REM --- COMMON SUB ROUTINE ---------------------------------------
